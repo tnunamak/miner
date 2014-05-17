@@ -10,15 +10,48 @@
             y (range rows)]
       (s/put-string scr x y " "))))
 
+(defn get-cursor-coords [scr [ox oy]]
+  (let [[cols rows] (s/get-size scr)]
+  [(int (+ ox (/ cols 2))) (int (+ oy (/ rows 2)))]))
+
+(defn valuable? [mineral]
+  (case mineral
+    (:platinum, :gold, :silver, :ruby) true
+    false))
+
+(defn collect-mineral [game]
+  (let [cursor (get-cursor-coords (:screen game) (:origin game))
+        mineral (or (get (:board game) cursor) :empty)
+        mineral-in-cargo (mineral (:cargo game))]
+    (println (:cargo game))
+    (assoc-in
+     (if (valuable? mineral)
+       (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo)))
+       game)
+     [:board cursor]
+     :empty)))
+
+
 (defn process-input [game]
-  (let [[x y] (:origin game)]
-    (let [new-origin (case (s/get-key (:screen game))
-                       :left [(- x 1) y]
-                       :right [(+ x 1) y]
-                       :up [x (- y 1)]
-                       :down [x (+ y 1)]
-                       [x y])]
-      (assoc-in game [:origin] new-origin))))
+  (let [[x y] (:origin game)
+        key-pressed (s/get-key (:screen game))]
+    (reduce (fn [game [key-in-game value]] ;; There has to be a better way to update multiple values in a map
+              (assoc-in game [key-in-game] value))
+            game
+            [(let [new-origin (case key-pressed
+                               :left [(- x 1) y]
+                               :right [(+ x 1) y]
+                               :up [x (- y 1)]
+                               :down [x (+ y 1)]
+                               [x y])]
+              (if (or (:drill-active game)
+                      (= (get (:board game) (get-cursor-coords (:screen game) new-origin)) :empty))
+                [:origin new-origin]
+                [:origin [x y]]))
+             (case key-pressed
+              \d [:drill-active true]
+              (:left :right :up :down) [:drill-active false]
+              [:drill-active (:drill-active game)])])))
 
 (defn get-magnitude [vect]
   (math/sqrt (apply + (map #(math/expt % 2) vect))))
@@ -27,7 +60,7 @@
   (let [value (rand 2)
         boosted-value (+ value (/ distance-traveled 1000))]
     (cond
-     (> value 1.0)   :none
+     (> value 1.0)   :empty
      (> boosted-value 0.999) :platinum
      (> boosted-value 0.990) :gold
      (> boosted-value 0.950) :silver
@@ -65,7 +98,7 @@
       (s/put-string (:screen game) (- x ox) (- y oy) " " {:bg color}))))
 
 (defn tick [my-pool game]
-  (let [new-game (build-board (process-input game))]
+  (let [new-game (build-board (collect-mineral (process-input game)))]
     (draw-board new-game)
     (s/redraw (:screen new-game))
     (at/at (+ 10 (at/now)) #(tick my-pool new-game) my-pool)))
@@ -78,6 +111,12 @@
   (let [[cols rows] (s/get-size scr)]
     (s/move-cursor scr (int (/ cols 2)) (int (/ rows 2))))
 
-  (tick my-pool {:screen scr :board {} :origin [0 0]}))
+  (tick my-pool {:screen scr
+                 :board {}
+                 :origin [0 0]
+                 :cargo {:platinum 0
+                         :gold 0
+                         :silver 0
+                         :ruby 0}}))
 
 (defn -main[] (bootstrap))
