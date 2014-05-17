@@ -12,7 +12,7 @@
 
 (defn get-cursor-coords [scr [ox oy]]
   (let [[cols rows] (s/get-size scr)]
-  [(int (+ ox (/ cols 2))) (int (+ oy (/ rows 2)))]))
+    [(int (+ ox (/ cols 2))) (int (+ oy (/ rows 2)))]))
 
 (defn valuable? [mineral]
   (case mineral
@@ -23,7 +23,6 @@
   (let [cursor (get-cursor-coords (:screen game) (:origin game))
         mineral (or (get (:board game) cursor) :empty)
         mineral-in-cargo (mineral (:cargo game))]
-    (println (:cargo game))
     (assoc-in
      (if (valuable? mineral)
        (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo)))
@@ -38,20 +37,23 @@
     (reduce (fn [game [key-in-game value]] ;; There has to be a better way to update multiple values in a map
               (assoc-in game [key-in-game] value))
             game
-            [(let [new-origin (case key-pressed
+            (let [new-origin (case key-pressed
                                :left [(- x 1) y]
                                :right [(+ x 1) y]
                                :up [x (- y 1)]
                                :down [x (+ y 1)]
-                               [x y])]
-              (if (or (:drill-active game)
-                      (= (get (:board game) (get-cursor-coords (:screen game) new-origin)) :empty))
-                [:origin new-origin]
-                [:origin [x y]]))
-             (case key-pressed
-              \d [:drill-active true]
-              (:left :right :up :down) [:drill-active false]
-              [:drill-active (:drill-active game)])])))
+                               [x y])
+                  mineral-type (get (:board game) (get-cursor-coords (:screen game) new-origin))
+                  is-move (and (not= new-origin [x y])
+                               (or (:drill-active game) (= mineral-type :empty)))]
+              [(if is-move
+                 [:fuel (- (:fuel game) (if (:drill-active game) 3 1))])
+               (if is-move
+                 [:origin new-origin]
+                 [:origin [x y]])
+               (case key-pressed
+                 \d [:drill-active (not (:drill-active game))]
+                 [:drill-active (:drill-active game)])]))))
 
 (defn get-magnitude [vect]
   (math/sqrt (apply + (map #(math/expt % 2) vect))))
@@ -75,15 +77,15 @@
 
 (defn build-board [game]
   (assoc-in game [:board]
-     (merge (apply hash-map ;; todo: figure how how to compose these applies
-           (apply concat
-                  (let [board (:board game)
-                        [ox oy] (:origin game)
-                        [cols rows] (s/get-size (:screen game))]
-                    (for [x (range ox (+ ox cols))
-                          y (range oy (+ oy rows))]
-                      (cell game x y)))))
-            (:board game))))
+            (merge (apply hash-map ;; todo: figure how how to compose these applies
+                          (apply concat
+                                 (let [board (:board game)
+                                       [ox oy] (:origin game)
+                                       [cols rows] (s/get-size (:screen game))]
+                                   (for [x (range ox (+ ox cols))
+                                         y (range oy (+ oy rows))]
+                                     (cell game x y)))))
+                   (:board game))))
 
 (defn draw-board [game]
   (doseq [[[x y] value] (:board game)]
@@ -97,9 +99,17 @@
                   :default)]
       (s/put-string (:screen game) (- x ox) (- y oy) " " {:bg color}))))
 
+(defn draw-hud [game]
+  (s/put-string (:screen game) 0 0 (str
+                                    "Cargo: " (:cargo game) "\t"
+                                    "Drill: " (if (:drill-active game) "on" "off") "\t"
+                                    "Fuel: " (:fuel game)
+                                    "\t\t\t\t\t")))
+
 (defn tick [my-pool game]
   (let [new-game (build-board (collect-mineral (process-input game)))]
     (draw-board new-game)
+    (draw-hud new-game)
     (s/redraw (:screen new-game))
     (at/at (+ 10 (at/now)) #(tick my-pool new-game) my-pool)))
 
@@ -117,6 +127,7 @@
                  :cargo {:platinum 0
                          :gold 0
                          :silver 0
-                         :ruby 0}}))
+                         :ruby 0}
+                 :fuel 100}))
 
 (defn -main[] (bootstrap))
