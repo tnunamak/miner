@@ -3,13 +3,6 @@
   (:require [overtone.at-at :as at])
   (:require [clojure.math.numeric-tower :as math]))
 
-
-(defn clear-screen [scr]
-  (let [[cols rows] (vec (s/get-size scr))]
-    (doseq [x (range cols)
-            y (range rows)]
-      (s/put-string scr x y " "))))
-
 (defn get-cursor-coords [scr [ox oy]]
   (let [[cols rows] (s/get-size scr)]
     [(int (+ ox (/ cols 2))) (int (+ oy (/ rows 2)))]))
@@ -19,17 +12,20 @@
     (:platinum, :gold, :silver, :ruby) true
     false))
 
+(defn fuel? [mineral]
+  (= :fuel mineral))
+
 (defn collect-mineral [game]
   (let [cursor (get-cursor-coords (:screen game) (:origin game))
         mineral (or (get (:board game) cursor) :empty)
         mineral-in-cargo (mineral (:cargo game))]
-    (assoc-in
-     (if (valuable? mineral)
-       (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo)))
-       game)
-     [:board cursor]
-     :empty)))
-
+    (if (fuel? mineral)
+      (assoc-in game [:fuel] (:fuel-capacity game))
+      (assoc-in
+       (if (valuable? mineral)
+         (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo))) game)
+       [:board cursor]
+       :empty))))
 
 (defn process-input [game]
   (let [[x y] (:origin game)
@@ -45,7 +41,9 @@
                                [x y])
                   mineral-type (get (:board game) (get-cursor-coords (:screen game) new-origin))
                   is-move (and (not= new-origin [x y])
-                               (or (:drill-active game) (= mineral-type :empty)))]
+                               (or (:drill-active game)
+                                   (= mineral-type :empty)
+                                   (= mineral-type :fuel)))]
               [(if is-move
                  [:fuel (- (:fuel game) (if (:drill-active game) 3 1))])
                (if is-move
@@ -62,6 +60,7 @@
   (let [value (rand 2)
         boosted-value (+ value (/ distance-traveled 1000))]
     (cond
+     (> value 1.999)  :fuel
      (> value 1.0)   :empty
      (> boosted-value 0.999) :platinum
      (> boosted-value 0.990) :gold
@@ -91,13 +90,17 @@
   (doseq [[[x y] value] (:board game)]
     (let [[ox oy] (:origin game)
           color (case value
+                  :fuel :magenta
                   :rock :green
                   :platinum :blue
                   :gold :yellow
-                  :silver :magenta
+                  :silver :cyan
                   :ruby :red
-                  :default)]
-      (s/put-string (:screen game) (- x ox) (- y oy) " " {:bg color}))))
+                  :default)
+          label (case value
+                  :fuel "F"
+                  " ")]
+      (s/put-string (:screen game) (- x ox) (- y oy) label {:bg color}))))
 
 (defn draw-hud [game]
   (s/put-string (:screen game) 0 0 (str
@@ -128,6 +131,7 @@
                          :gold 0
                          :silver 0
                          :ruby 0}
-                 :fuel 100}))
+                 :fuel 100
+                 :fuel-capacity 100}))
 
 (defn -main[] (bootstrap))
