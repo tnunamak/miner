@@ -3,9 +3,12 @@
   (:require [overtone.at-at :as at])
   (:require [clojure.math.numeric-tower :as math]))
 
-(defn get-cursor-coords [scr [ox oy]]
-  (let [[cols rows] (s/get-size scr)]
-    [(int (+ ox (/ cols 2))) (int (+ oy (/ rows 2)))]))
+(defn get-cursor-coords
+  ([game]
+   (get-cursor-coords (:screen game) (:origin game)))
+  ([scr [ox oy]]
+   (let [[cols rows] (s/get-size scr)]
+     [(int (+ ox (/ cols 2))) (int (+ oy (/ rows 2)))])))
 
 (defn valuable? [mineral]
   (case mineral
@@ -15,17 +18,46 @@
 (defn fuel? [mineral]
   (= :fuel mineral))
 
+(defn shop? [mineral]
+  (= :shop mineral))
+
+(defn mineral-value-of [mineral]
+  (case mineral
+    :platinum 50
+    :gold 10
+    :silver 3
+    :ruby 1
+    0))
+
+(defn cash-for-cargo [game]
+  (assoc-in game [:money] (+ (:money game)
+                             (reduce
+                              #(+ %1 (* (mineral-value-of (key %2)) (val %2)))
+                              0 (:cargo game)))))
+
+(defn sell-cargo [game]
+  (assoc-in (cash-for-cargo game) [:cargo] {:platinum 0
+                                            :gold 0
+                                            :silver 0
+                                            :ruby 0}))
+
+(defn empty-at-cursor [game]
+  (assoc-in
+   game
+   [:board (get-cursor-coords game)]
+   :empty))
+
+(defn count-mineral [game mineral]
+  (let [mineral-in-cargo (mineral (:cargo game))]
+    (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo)))))
+
 (defn collect-mineral [game]
-  (let [cursor (get-cursor-coords (:screen game) (:origin game))
-        mineral (or (get (:board game) cursor) :empty)
-        mineral-in-cargo (mineral (:cargo game))]
-    (if (fuel? mineral)
-      (assoc-in game [:fuel] (:fuel-capacity game))
-      (assoc-in
-       (if (valuable? mineral)
-         (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo))) game)
-       [:board cursor]
-       :empty))))
+  (let [mineral (or (get (:board game) (get-cursor-coords game)) :empty)]
+    (cond
+     (fuel? mineral) (assoc-in game [:fuel] (:fuel-capacity game))
+     (shop? mineral) (sell-cargo game)
+     (valuable? mineral) (empty-at-cursor (count-mineral game mineral))
+     :else (empty-at-cursor game))))
 
 (defn process-input [game]
   (let [[x y] (:origin game)
@@ -43,7 +75,8 @@
                   is-move (and (not= new-origin [x y])
                                (or (:drill-active game)
                                    (= mineral-type :empty)
-                                   (= mineral-type :fuel)))]
+                                   (= mineral-type :fuel)
+                                   (= mineral-type :shop)))]
               [(if is-move
                  [:fuel (- (:fuel game) (if (:drill-active game) 3 1))])
                (if is-move
@@ -61,6 +94,7 @@
         boosted-value (+ value (/ distance-traveled 1000))]
     (cond
      (> value 1.999)  :fuel
+     (> value 1.998)  :shop
      (> value 1.0)   :empty
      (> boosted-value 0.999) :platinum
      (> boosted-value 0.990) :gold
@@ -90,7 +124,7 @@
   (doseq [[[x y] value] (:board game)]
     (let [[ox oy] (:origin game)
           color (case value
-                  :fuel :magenta
+                  (:fuel :shop) :magenta
                   :rock :green
                   :platinum :blue
                   :gold :yellow
@@ -99,6 +133,7 @@
                   :default)
           label (case value
                   :fuel "F"
+                  :shop "S"
                   " ")]
       (s/put-string (:screen game) (- x ox) (- y oy) label {:bg color}))))
 
@@ -106,7 +141,8 @@
   (s/put-string (:screen game) 0 0 (str
                                     "Cargo: " (:cargo game) "\t"
                                     "Drill: " (if (:drill-active game) "on" "off") "\t"
-                                    "Fuel: " (:fuel game)
+                                    "Fuel: " (:fuel game) "\t"
+                                    "$" (:money game)
                                     "\t\t\t\t\t")))
 
 (defn tick [my-pool game]
@@ -131,6 +167,7 @@
                          :gold 0
                          :silver 0
                          :ruby 0}
+                 :money 0
                  :fuel 100
                  :fuel-capacity 100}))
 
