@@ -1,4 +1,5 @@
 (ns miner.core
+  (:gen-class :main true)
   (:require [lanterna.screen :as s])
   (:require [overtone.at-at :as at])
   (:require [clojure.math.numeric-tower :as math]))
@@ -140,7 +141,7 @@
 (defn draw-hud [game]
   (s/put-string (:screen game) 0 0 (str
                                     "Cargo: " (:cargo game) "\t"
-                                    "Drill: " (if (:drill-active game) "on" "off") "\t"
+                                    "Drill (d): " (if (:drill-active game) "on" "off") "\t"
                                     "Fuel: " (:fuel game) "\t"
                                     "$" (:money game)
                                     "\t\t\t\t\t")))
@@ -150,7 +151,11 @@
     (draw-board new-game)
     (draw-hud new-game)
     (s/redraw (:screen new-game))
-    (at/at (+ 10 (at/now)) #(tick my-pool new-game) my-pool)))
+    (if (> (:fuel new-game) 0)
+      (at/at (+ 10 (at/now)) #(tick my-pool new-game) my-pool)
+      (do
+        (s/put-string (:screen new-game) 0 1 "GAME OVER\t\t\t\t\t\t\t\t\t\t\t\t")
+        (s/redraw (:screen new-game))))))
 
 (defn bootstrap []
   (def my-pool (at/mk-pool))
