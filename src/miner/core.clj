@@ -30,6 +30,9 @@
     :ruby 1
     0))
 
+(defn count-cargo [game]
+  (apply + (vals (:cargo game))))
+
 (defn cash-for-cargo [game]
   (assoc-in game [:money] (+ (:money game)
                              (reduce
@@ -49,8 +52,10 @@
    :empty))
 
 (defn count-mineral [game mineral]
-  (let [mineral-in-cargo (mineral (:cargo game))]
-    (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo)))))
+  (if (< (count-cargo game) (:cargo-capacity game))
+    (let [mineral-in-cargo (mineral (:cargo game))]
+      (assoc-in game [:cargo mineral] (if-not mineral-in-cargo 1 (inc mineral-in-cargo))))
+    game))
 
 (defn collect-mineral [game]
   (let [mineral (or (get (:board game) (get-cursor-coords game)) :empty)]
@@ -140,7 +145,7 @@
 
 (defn draw-hud [game]
   (s/put-string (:screen game) 0 0 (str
-                                    "Cargo: " (:cargo game) "\t"
+                                    "Cargo: " "(" (count-cargo game) "/" (:cargo-capacity game) ")" (:cargo game) "\t"
                                     "Drill (d): " (if (:drill-active game) "on" "off") "\t"
                                     "Fuel: " (:fuel game) "\t"
                                     "$" (:money game)
@@ -172,6 +177,7 @@
                          :gold 0
                          :silver 0
                          :ruby 0}
+                 :cargo-capacity 10
                  :money 0
                  :fuel 100
                  :fuel-capacity 100}))
