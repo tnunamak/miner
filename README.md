@@ -9,3 +9,6 @@ Run with `lein run -m miner.core`
 ## Play
 
 Use the arrow keys to navigate
+
+![Drill and buy a fuel station](screencap.gif "Drill and buy a fuel station")
+
